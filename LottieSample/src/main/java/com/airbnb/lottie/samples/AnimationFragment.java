@@ -16,13 +16,14 @@ import android.support.annotation.DrawableRes;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.design.widget.Snackbar;
+import android.support.graphics.drawable.VectorDrawableCompat;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.util.Pair;
 import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.AppCompatDrawableManager;
 import android.support.v7.widget.AppCompatSeekBar;
 import android.support.v7.widget.Toolbar;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -179,8 +180,7 @@ public class AnimationFragment extends Fragment {
   }
 
   private void setDrawableLeft(TextView textView, @DrawableRes int resId) {
-    //noinspection RestrictedApi
-    Drawable drawable = AppCompatDrawableManager.get().getDrawable(getActivity(), resId);
+    Drawable drawable = VectorDrawableCompat.create(getResources(), resId, getActivity().getTheme());
     textView.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null);
   }
 
@@ -219,7 +219,11 @@ public class AnimationFragment extends Fragment {
         animationView.setImageAssetsFolder(assetFolders.get(assetName));
         LottieComposition.Factory.fromAssetFileName(getContext(), assetName,
             new OnCompositionLoadedListener() {
-              @Override public void onCompositionLoaded(LottieComposition composition) {
+              @Override public void onCompositionLoaded(@Nullable LottieComposition composition) {
+                if (composition == null) {
+                  onLoadError();
+                  return;
+                }
                 setComposition(composition, assetName);
               }
             });
@@ -237,6 +241,14 @@ public class AnimationFragment extends Fragment {
   }
 
   private void setComposition(LottieComposition composition, String name) {
+    if (composition.hasImages() && TextUtils.isEmpty(animationView.getImageAssetsFolder())) {
+      //noinspection ConstantConditions
+      Snackbar.make(
+          getView(),
+          "This animation has images and no image folder was set",
+          Snackbar.LENGTH_LONG).show();
+      return;
+    }
     instructionsContainer.setVisibility(View.GONE);
     seekBar.setProgress(0);
     animationView.setComposition(composition);
@@ -330,16 +342,16 @@ public class AnimationFragment extends Fragment {
     }
   }
 
-  @OnClick(R.id.load_url)
-  void onLoadUrlClicked() {
+  @OnClick(R.id.load_url_or_json)
+  void onLoadUrlOrJsonClicked() {
     animationView.cancelAnimation();
-    final EditText urlView = new EditText(getContext());
+    final EditText urlOrJsonView = new EditText(getContext());
     new AlertDialog.Builder(getContext())
-        .setTitle("Enter a URL")
-        .setView(urlView)
+        .setTitle("Enter a URL or JSON string")
+        .setView(urlOrJsonView)
         .setPositiveButton("Load", new DialogInterface.OnClickListener() {
           @Override public void onClick(DialogInterface dialog, int which) {
-            loadUrl(urlView.getText().toString());
+            loadUrlOrJson(urlOrJsonView.getText().toString());
           }
         })
         .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
@@ -384,10 +396,41 @@ public class AnimationFragment extends Fragment {
 
     LottieComposition.Factory
         .fromInputStream(getContext(), fis, new OnCompositionLoadedListener() {
-          @Override public void onCompositionLoaded(LottieComposition composition) {
+          @Override public void onCompositionLoaded(@Nullable LottieComposition composition) {
+            if (composition == null) {
+              onLoadError();
+              return;
+            }
             setComposition(composition, uri.getPath());
           }
         });
+  }
+
+  private void loadUrlOrJson(String text) {
+    if (text.charAt(0) == '{') {
+      // Assume JSON
+      loadJsonString(text);
+      return;
+    }
+    loadUrl(text);
+  }
+
+  private void loadJsonString(String jsonString) {
+    try {
+      JSONObject json = new JSONObject(jsonString);
+      LottieComposition.Factory
+          .fromJson(getResources(), json, new OnCompositionLoadedListener() {
+            @Override public void onCompositionLoaded(@Nullable LottieComposition composition) {
+              if (composition == null) {
+                onLoadError();
+                return;
+              }
+              setComposition(composition, "Animation");
+            }
+          });
+    } catch (JSONException e) {
+      onLoadError();
+    }
   }
 
   private void loadUrl(String url) {
@@ -415,17 +458,7 @@ public class AnimationFragment extends Fragment {
           onLoadError();
         }
 
-        try {
-          JSONObject json = new JSONObject(response.body().string());
-          LottieComposition.Factory
-              .fromJson(getResources(), json, new OnCompositionLoadedListener() {
-                @Override public void onCompositionLoaded(LottieComposition composition) {
-                  setComposition(composition, "Network Animation");
-                }
-              });
-        } catch (JSONException e) {
-          onLoadError();
-        }
+        loadJsonString(response.body().string());
       }
     });
   }

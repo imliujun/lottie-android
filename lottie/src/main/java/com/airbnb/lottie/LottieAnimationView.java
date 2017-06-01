@@ -4,6 +4,7 @@ import android.animation.Animator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.drawable.Drawable;
@@ -61,8 +62,10 @@ public class LottieAnimationView extends AppCompatImageView {
   private final OnCompositionLoadedListener loadedListener =
       new OnCompositionLoadedListener() {
         @Override
-        public void onCompositionLoaded(LottieComposition composition) {
-          setComposition(composition);
+        public void onCompositionLoaded(@Nullable LottieComposition composition) {
+          if (composition != null) {
+            setComposition(composition);
+          }
           compositionLoader = null;
         }
       };
@@ -97,6 +100,10 @@ public class LottieAnimationView extends AppCompatImageView {
 
   private void init(@Nullable AttributeSet attrs) {
     TypedArray ta = getContext().obtainStyledAttributes(attrs, R.styleable.LottieAnimationView);
+    int cacheStrategy = ta.getInt(
+        R.styleable.LottieAnimationView_lottie_cacheStrategy,
+        CacheStrategy.None.ordinal());
+    defaultCacheStrategy = CacheStrategy.values()[cacheStrategy];
     String fileName = ta.getString(R.styleable.LottieAnimationView_lottie_fileName);
     if (!isInEditMode() && fileName != null) {
       setAnimation(fileName);
@@ -110,19 +117,19 @@ public class LottieAnimationView extends AppCompatImageView {
     setProgress(ta.getFloat(R.styleable.LottieAnimationView_lottie_progress, 0));
     enableMergePathsForKitKatAndAbove(ta.getBoolean(
         R.styleable.LottieAnimationView_lottie_enableMergePathsForKitKatAndAbove, false));
-    int cacheStrategy = ta.getInt(
-        R.styleable.LottieAnimationView_lottie_cacheStrategy,
-        CacheStrategy.None.ordinal());
-    defaultCacheStrategy = CacheStrategy.values()[cacheStrategy];
     if (ta.hasValue(R.styleable.LottieAnimationView_lottie_colorFilter)) {
       addColorFilter(new SimpleColorFilter(ta.getColor(
           R.styleable.LottieAnimationView_lottie_colorFilter, Color.TRANSPARENT)));
     }
+    if (ta.hasValue(R.styleable.LottieAnimationView_lottie_scale)) {
+      lottieDrawable.setScale(ta.getFloat(R.styleable.LottieAnimationView_lottie_scale, 1f));
+    }
+
     ta.recycle();
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-    float systemAnimationScale = Settings.Global.getFloat(getContext().getContentResolver(),
-        Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f);
+      float systemAnimationScale = Settings.Global.getFloat(getContext().getContentResolver(),
+          Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f);
       if (systemAnimationScale == 0f) {
         lottieDrawable.systemAnimationsAreDisabled();
       }
@@ -181,7 +188,7 @@ public class LottieAnimationView extends AppCompatImageView {
 
   @Override public void invalidateDrawable(@NonNull Drawable dr) {
     if (getDrawable() == lottieDrawable) {
-      // We always want to invalidate the root drawable to it redraws the whole drawable.
+      // We always want to invalidate the root drawable so it redraws the whole drawable.
       // Eventually it would be great to be able to invalidate just the changed region.
       super.invalidateDrawable(lottieDrawable);
     } else {
@@ -375,7 +382,10 @@ public class LottieAnimationView extends AppCompatImageView {
         compHeight > screenHeight) {
       float xScale = screenWidth / (float) compWidth;
       float yScale = screenHeight / (float) compHeight;
-      setScale(Math.min(xScale, yScale));
+
+      float maxScaleForScreen = Math.min(xScale, yScale);
+      setScale(Math.min(maxScaleForScreen, lottieDrawable.getScale()));
+
       Log.w(L.TAG, String.format(
           "Composition larger than the screen %dx%d vs %dx%d. Scaling down.",
           compWidth, compHeight, screenWidth, screenHeight));
@@ -404,18 +414,6 @@ public class LottieAnimationView extends AppCompatImageView {
    */
   @SuppressWarnings("unused") public boolean hasMatte() {
     return lottieDrawable.hasMatte();
-  }
-
-  /**
-   * If you use image assets, you must explicitly specify the folder in assets/ in which they are
-   * located because bodymovin uses the name filenames across all compositions (img_#).
-   * Do NOT rename the images themselves.
-   *
-   * If your images are located in src/main/assets/airbnb_loader/ then call
-   * `setImageAssetsFolder("airbnb_loader/");`.
-   */
-  @SuppressWarnings("WeakerAccess") public void setImageAssetsFolder(String imageAssetsFolder) {
-    lottieDrawable.setImagesAssetsFolder(imageAssetsFolder);
   }
 
   public void addAnimatorUpdateListener(ValueAnimator.AnimatorUpdateListener updateListener) {
@@ -466,6 +464,35 @@ public class LottieAnimationView extends AppCompatImageView {
 
   @SuppressWarnings("unused") public void setSpeed(float speed) {
     lottieDrawable.setSpeed(speed);
+  }
+
+  /**
+   * If you use image assets, you must explicitly specify the folder in assets/ in which they are
+   * located because bodymovin uses the name filenames across all compositions (img_#).
+   * Do NOT rename the images themselves.
+   *
+   * If your images are located in src/main/assets/airbnb_loader/ then call
+   * `setImageAssetsFolder("airbnb_loader/");`.
+   */
+  @SuppressWarnings("WeakerAccess") public void setImageAssetsFolder(String imageAssetsFolder) {
+    lottieDrawable.setImagesAssetsFolder(imageAssetsFolder);
+  }
+
+  @Nullable
+  public String getImageAssetsFolder() {
+    return lottieDrawable.getImageAssetsFolder();
+  }
+
+  /**
+   * Allows you to modify or clear a bitmap that was loaded for an image either automatically
+   * through {@link #setImageAssetsFolder(String)} or with an {@link ImageAssetDelegate}.
+   *
+   * @return the previous Bitmap or null.
+   */
+  @Nullable
+  @SuppressWarnings({"unused", "WeakerAccess"})
+  public Bitmap updateBitmap(String id, @Nullable Bitmap bitmap) {
+    return lottieDrawable.updateBitmap(id, bitmap);
   }
 
   /**

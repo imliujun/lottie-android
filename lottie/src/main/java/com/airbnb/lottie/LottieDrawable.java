@@ -36,8 +36,8 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
   private LottieComposition composition;
   private final ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
   private float speed = 1f;
-  private float scale = 1f;
   private float progress = 0f;
+  private float scale = 1f;
 
   private final Set<ColorFilterData> colorFilterData = new HashSet<>();
   @Nullable private ImageAssetBitmapManager imageAssetBitmapManager;
@@ -139,14 +139,6 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
    * @return True if the composition is different from the previously set composition, false otherwise.
    */
   @SuppressWarnings("WeakerAccess") public boolean setComposition(LottieComposition composition) {
-    if (getCallback() == null) {
-      throw new IllegalStateException(
-          "You or your view must set a Drawable.Callback before setting the composition. This " +
-              "gets done automatically when added to an ImageView. " +
-              "Either call ImageView.setImageDrawable() before setComposition() or call " +
-              "setCallback(yourView.getCallback()) first.");
-    }
-
     if (this.composition == composition) {
       return false;
     }
@@ -154,7 +146,6 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
     clearComposition();
     this.composition = composition;
     setSpeed(speed);
-    setScale(1f);
     updateBounds();
     buildCompositionLayer();
     applyColorFilters();
@@ -322,10 +313,11 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
       reverseAnimationWhenCompositionAdded = false;
       return;
     }
-    if (setStartTime) {
-      animator.setCurrentPlayTime((long) (progress * animator.getDuration()));
-    }
+    long playTime = setStartTime ? (long) (progress * animator.getDuration()) : 0;
     animator.start();
+    if (setStartTime) {
+      animator.setCurrentPlayTime(playTime);
+    }
   }
 
   @SuppressWarnings({"unused", "WeakerAccess"}) public void resumeReverseAnimation() {
@@ -445,12 +437,41 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
     return composition == null ? -1 : (int) (composition.getBounds().height() * scale);
   }
 
+  /**
+   * Allows you to modify or clear a bitmap that was loaded for an image either automatically
+   * through {@link #setImagesAssetsFolder(String)} or with an {@link ImageAssetDelegate}.
+   *
+   * @return the previous Bitmap or null.
+   */
+  @Nullable
+  @SuppressWarnings({"unused", "WeakerAccess"})
+  public Bitmap updateBitmap(String id, @Nullable Bitmap bitmap) {
+    ImageAssetBitmapManager bm = getImageAssetBitmapManager();
+    if (bm == null) {
+      Log.w(L.TAG, "Cannot update bitmap. Most likely the drawable is not added to a View " +
+        "which prevents Lottie from getting a Context.");
+      return null;
+    }
+    Bitmap ret = bm.updateBitmap(id, bitmap);
+    invalidateSelf();
+    return ret;
+  }
+
   @Nullable
   Bitmap getImageAsset(String id) {
-    return getImageAssetBitmapManager().bitmapForId(id);
+    ImageAssetBitmapManager bm = getImageAssetBitmapManager();
+    if (bm != null) {
+      return bm.bitmapForId(id);
+    }
+    return null;
   }
 
   private ImageAssetBitmapManager getImageAssetBitmapManager() {
+    if (getCallback() == null) {
+      // We can't get a bitmap since we can't get a Context from the callback.
+      return null;
+    }
+
     if (imageAssetBitmapManager != null && !imageAssetBitmapManager.hasSameContext(getContext())) {
       imageAssetBitmapManager.recycleBitmaps();
       imageAssetBitmapManager = null;
