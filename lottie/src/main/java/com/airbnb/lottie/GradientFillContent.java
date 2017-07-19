@@ -75,6 +75,7 @@ class GradientFillContent implements DrawingContent, BaseKeyframeAnimation.Anima
   }
 
   @Override public void draw(Canvas canvas, Matrix parentMatrix, int parentAlpha) {
+    L.beginSection("GradientFillContent#draw");
     path.reset();
     for (int i = 0; i < paths.size(); i++) {
       path.addPath(paths.get(i).getPath(), parentMatrix);
@@ -96,6 +97,7 @@ class GradientFillContent implements DrawingContent, BaseKeyframeAnimation.Anima
     paint.setAlpha(alpha);
 
     canvas.drawPath(path, paint);
+    L.endSection("GradientFillContent#draw");
   }
 
   @Override public void getBounds(RectF outBounds, Matrix parentMatrix) {
@@ -166,9 +168,15 @@ class GradientFillContent implements DrawingContent, BaseKeyframeAnimation.Anima
     int endPointProgress = Math.round(endPointAnimation.getProgress() * cacheSteps);
     int colorProgress = Math.round(colorAnimation.getProgress() * cacheSteps);
     int hash = 17;
-    hash = hash * 31 * startPointProgress;
-    hash = hash * 31 * endPointProgress;
-    hash = hash * 31 * colorProgress;
+    if (startPointProgress != 0) {
+      hash = hash * 31 * startPointProgress;
+    }
+    if (endPointProgress != 0) {
+      hash = hash * 31 * endPointProgress;
+    }
+    if (colorProgress != 0) {
+      hash = hash * 31 * colorProgress;
+    }
     return hash;
   }
 }

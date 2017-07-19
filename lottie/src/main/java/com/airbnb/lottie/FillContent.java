@@ -62,6 +62,7 @@ class FillContent implements DrawingContent, BaseKeyframeAnimation.AnimationList
   }
 
   @Override public void draw(Canvas canvas, Matrix parentMatrix, int parentAlpha) {
+    L.beginSection("FillContent#draw");
     paint.setColor(colorAnimation.getValue());
     int alpha = (int) ((parentAlpha / 255f * opacityAnimation.getValue() / 100f) * 255);
     paint.setAlpha(alpha);
@@ -72,6 +73,7 @@ class FillContent implements DrawingContent, BaseKeyframeAnimation.AnimationList
     }
 
     canvas.drawPath(path, paint);
+    L.endSection("FillContent#draw");
   }
 
   @Override public void getBounds(RectF outBounds, Matrix parentMatrix) {

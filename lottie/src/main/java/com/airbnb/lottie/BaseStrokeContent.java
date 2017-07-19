@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimation.AnimationListener {
+
   private final PathMeasure pm = new PathMeasure();
   private final Path path = new Path();
   private final Path trimPathPath = new Path();
@@ -31,6 +32,7 @@ abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimatio
       Paint.Join join, AnimatableIntegerValue opacity, AnimatableFloatValue width,
       List<AnimatableFloatValue> dashPattern, AnimatableFloatValue offset) {
     this.lottieDrawable = lottieDrawable;
+
     paint.setStyle(Paint.Style.STROKE);
     paint.setStrokeCap(cap);
     paint.setStrokeJoin(join);
@@ -110,11 +112,13 @@ abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimatio
   }
 
   @Override public void draw(Canvas canvas, Matrix parentMatrix, int parentAlpha) {
+    L.beginSection("StrokeContent#draw");
     int alpha = (int) ((parentAlpha / 255f * opacityAnimation.getValue() / 100f) * 255);
     paint.setAlpha(alpha);
     paint.setStrokeWidth(widthAnimation.getValue() * Utils.getScale(parentMatrix));
     if (paint.getStrokeWidth() <= 0) {
       // Android draws a hairline stroke for 0, After Effects doesn't.
+      L.endSection("StrokeContent#draw");
       return;
     }
     applyDashPatternIfNeeded(parentMatrix);
@@ -126,17 +130,24 @@ abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimatio
       if (pathGroup.trimPath != null) {
         applyTrimPath(canvas, pathGroup, parentMatrix);
       } else {
+        L.beginSection("StrokeContent#buildPath");
         path.reset();
         for (int j = pathGroup.paths.size() - 1; j >= 0; j--) {
           path.addPath(pathGroup.paths.get(j).getPath(), parentMatrix);
         }
+        L.endSection("StrokeContent#buildPath");
+        L.beginSection("StrokeContent#drawPath");
         canvas.drawPath(path, paint);
+        L.endSection("StrokeContent#drawPath");
       }
     }
+    L.endSection("StrokeContent#draw");
   }
 
   private void applyTrimPath(Canvas canvas, PathGroup pathGroup, Matrix parentMatrix) {
+    L.beginSection("StrokeContent#applyTrimPath");
     if (pathGroup.trimPath == null) {
+      L.endSection("StrokeContent#applyTrimPath");
       return;
     }
     path.reset();
@@ -197,9 +208,11 @@ abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimatio
         }
       currentLength += length;
     }
+    L.endSection("StrokeContent#applyTrimPath");
   }
 
   @Override public void getBounds(RectF outBounds, Matrix parentMatrix) {
+    L.beginSection("StrokeContent#getBounds");
     path.reset();
     for (int i = 0; i < pathGroups.size(); i++) {
       PathGroup pathGroup = pathGroups.get(i);
@@ -220,10 +233,13 @@ abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimatio
         outBounds.right + 1,
         outBounds.bottom + 1
     );
+    L.endSection("StrokeContent#getBounds");
   }
 
   private void applyDashPatternIfNeeded(Matrix parentMatrix) {
+    L.beginSection("StrokeContent#applyDashPattern");
     if (dashPatternAnimations.isEmpty()) {
+      L.endSection("StrokeContent#applyDashPattern");
       return;
     }
 
@@ -247,6 +263,7 @@ abstract class BaseStrokeContent implements DrawingContent, BaseKeyframeAnimatio
     }
     float offset = dashPatternOffsetAnimation == null ? 0f : dashPatternOffsetAnimation.getValue();
     paint.setPathEffect(new DashPathEffect(dashPatternValues, offset));
+    L.endSection("StrokeContent#applyDashPattern");
   }
 
   /**

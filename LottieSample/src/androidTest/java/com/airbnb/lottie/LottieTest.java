@@ -35,8 +35,11 @@ public class LottieTest {
     TestRobot.testLinearAnimation(activity, "MotionCorpse-Jrcanest.json");
     TestRobot.testLinearAnimation(activity, "PinJump.json");
     TestRobot.testLinearAnimation(activity, "TwitterHeart.json");
-    TestRobot.testLinearAnimation(activity, "WeAccept.json", "Images/WeAccept");
-    TestRobot.testLinearAnimation(activity, "lottiefiles.com - Animated Graph.json");
+    TestRobot.testLinearAnimation(activity, "Hello World.json");
+    TestRobot.testLinearAnimation(activity, "WeAccept.json", "Images/WeAccept", null);
+    TextDelegate delegate = new TextDelegate();
+    delegate.setText("NAME", "Gabe");
+    TestRobot.testLinearAnimation(activity, "Name.json", null, delegate);
     TestRobot.testLinearAnimation(activity, "lottiefiles.com - Beating Heart.json");
     TestRobot.testLinearAnimation(activity, "lottiefiles.com - Progress Success.json");
     TestRobot.testLinearAnimation(activity, "lottiefiles.com - Touch ID.json");
@@ -70,9 +73,12 @@ public class LottieTest {
     TestRobot.testLinearAnimation(activity, "Tests/LoopPlayOnce.json");
     TestRobot.testLinearAnimation(activity, "Tests/Parenting.json");
     TestRobot.testLinearAnimation(activity, "Tests/Precomps.json");
+    TestRobot.testLinearAnimation(activity, "Tests/Remap.json");
+    TestRobot.testLinearAnimation(activity, "Tests/Repeater.json");
     TestRobot.testLinearAnimation(activity, "Tests/ShapeTypes.json");
     TestRobot.testLinearAnimation(activity, "Tests/SplitDimensions.json");
     TestRobot.testLinearAnimation(activity, "Tests/Stroke.json");
+    TestRobot.testLinearAnimation(activity, "Tests/TimeStretch.json");
     TestRobot.testLinearAnimation(activity, "Tests/TrackMattes.json");
     TestRobot.testLinearAnimation(activity, "Tests/TrimPaths.json");
     TestRobot.testChangingCompositions(activity, "TwitterHeart.json", "PinJump.json");

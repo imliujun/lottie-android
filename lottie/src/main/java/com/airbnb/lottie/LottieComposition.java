@@ -6,6 +6,7 @@ import android.graphics.Rect;
 import android.os.AsyncTask;
 import android.support.annotation.Nullable;
 import android.support.v4.util.LongSparseArray;
+import android.support.v4.util.SparseArrayCompat;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -15,7 +16,9 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -31,21 +34,54 @@ public class LottieComposition {
 
   private final Map<String, List<Layer>> precomps = new HashMap<>();
   private final Map<String, LottieImageAsset> images = new HashMap<>();
+  /** Map of font names to fonts */
+  private final Map<String, Font> fonts = new HashMap<>();
+  private final SparseArrayCompat<FontCharacter> characters = new SparseArrayCompat<>();
   private final LongSparseArray<Layer> layerMap = new LongSparseArray<>();
   private final List<Layer> layers = new ArrayList<>();
+  // This is stored as a set to avoid duplicates.
+  private final HashSet<String> warnings = new HashSet<>();
+  private final PerformanceTracker performanceTracker = new PerformanceTracker();
   private final Rect bounds;
   private final long startFrame;
   private final long endFrame;
-  private final int frameRate;
+  private final float frameRate;
   private final float dpScale;
+  /* Bodymovin version */
+  private final int majorVersion;
+  private final int minorVersion;
+  private final int patchVersion;
 
-  private LottieComposition(
-      Rect bounds, long startFrame, long endFrame, int frameRate, float dpScale) {
+  private LottieComposition(Rect bounds, long startFrame, long endFrame, float frameRate,
+      float dpScale, int major, int minor, int patch) {
     this.bounds = bounds;
     this.startFrame = startFrame;
     this.endFrame = endFrame;
     this.frameRate = frameRate;
     this.dpScale = dpScale;
+    this.majorVersion = major;
+    this.minorVersion = minor;
+    this.patchVersion = patch;
+    if (!Utils.isAtLeastVersion(this, 4, 5, 0)) {
+      addWarning("Lottie only supports bodymovin >= 4.5.0");
+    }
+  }
+
+  void addWarning(String warning) {
+    Log.w(L.TAG, warning);
+    warnings.add(warning);
+  }
+
+  public ArrayList<String> getWarnings() {
+    return new ArrayList<>(Arrays.asList(warnings.toArray(new String[warnings.size()])));
+  }
+
+  public void setPerformanceTrackingEnabled(boolean enabled) {
+    performanceTracker.setEnabled(enabled);
+  }
+
+  public PerformanceTracker getPerformanceTracker() {
+    return performanceTracker;
   }
 
   Layer layerModelForId(long id) {
@@ -58,7 +94,23 @@ public class LottieComposition {
 
   @SuppressWarnings("WeakerAccess") public long getDuration() {
     long frameDuration = endFrame - startFrame;
-    return (long) (frameDuration / (float) frameRate * 1000);
+    return (long) (frameDuration / frameRate * 1000);
+  }
+
+  int getMajorVersion() {
+    return majorVersion;
+  }
+
+  int getMinorVersion() {
+    return minorVersion;
+  }
+
+  int getPatchVersion() {
+    return patchVersion;
+  }
+
+  long getStartFrame() {
+    return startFrame;
   }
 
   long getEndFrame() {
@@ -74,6 +126,14 @@ public class LottieComposition {
     return precomps.get(id);
   }
 
+  SparseArrayCompat<FontCharacter> getCharacters() {
+    return characters;
+  }
+
+  Map<String, Font> getFonts() {
+    return fonts;
+  }
+
   public boolean hasImages() {
     return !images.isEmpty();
   }
@@ -83,11 +143,11 @@ public class LottieComposition {
   }
 
   float getDurationFrames() {
-    return getDuration() * (float) frameRate / 1000f;
+    return getDuration() * frameRate / 1000f;
   }
 
 
-  public float getDpScale() {
+  float getDpScale() {
     return dpScale;
   }
 
@@ -191,12 +251,19 @@ public class LottieComposition {
 
       long startFrame = json.optLong("ip", 0);
       long endFrame = json.optLong("op", 0);
-      int frameRate = json.optInt("fr", 0);
-      LottieComposition composition =
-          new LottieComposition(bounds, startFrame, endFrame, frameRate, scale);
+      float frameRate = (float) json.optDouble("fr", 0);
+      String version = json.optString("v");
+      String[] versions = version.split("[.]");
+      int major = Integer.parseInt(versions[0]);
+      int minor = Integer.parseInt(versions[1]);
+      int patch = Integer.parseInt(versions[2]);
+      LottieComposition composition = new LottieComposition(
+          bounds, startFrame, endFrame, frameRate, scale, major, minor, patch);
       JSONArray assetsJson = json.optJSONArray("assets");
       parseImages(assetsJson, composition);
       parsePrecomps(assetsJson, composition);
+      parseFonts(json.optJSONObject("fonts"), composition);
+      parseChars(json.optJSONArray("chars"), composition);
       parseLayers(json, composition);
       return composition;
     }
@@ -204,16 +271,26 @@ public class LottieComposition {
     private static void parseLayers(JSONObject json, LottieComposition composition) {
       JSONArray jsonLayers = json.optJSONArray("layers");
       // This should never be null. Bodymovin always exports at least an empty array.
-      // However, it seems as if the demarshalling from the React Native library sometimes
+      // However, it seems as if the unmarshalling from the React Native library sometimes
       // causes this to be null. The proper fix should be done there but this will prevent a crash.
       // https://github.com/airbnb/lottie-android/issues/279
       if (jsonLayers == null) {
         return;
       }
       int length = jsonLayers.length();
+      int imageCount = 0;
       for (int i = 0; i < length; i++) {
         Layer layer = Layer.Factory.newInstance(jsonLayers.optJSONObject(i), composition);
+        if (layer.getLayerType() == Layer.LayerType.Image) {
+          imageCount++;
+        }
         addLayer(composition.layers, composition.layerMap, layer);
+      }
+
+      if (imageCount > 4) {
+        composition.addWarning("You have " + imageCount + " images. Lottie should primarily be " +
+            "used with shapes. If you are using Adobe Illustrator, convert the Illustrator layers" +
+            " to shape layers.");
       }
     }
 
@@ -254,6 +331,34 @@ public class LottieComposition {
         }
         LottieImageAsset image = LottieImageAsset.Factory.newInstance(assetJson);
         composition.images.put(image.getId(), image);
+      }
+    }
+
+    private static void parseFonts(@Nullable JSONObject fonts, LottieComposition composition) {
+      if (fonts == null) {
+        return;
+      }
+      JSONArray fontsList = fonts.optJSONArray("list");
+      if (fontsList == null) {
+        return;
+      }
+      int length = fontsList.length();
+      for (int i = 0; i < length; i++) {
+        Font font = Font.Factory.newInstance(fontsList.optJSONObject(i));
+        composition.fonts.put(font.getName(), font);
+      }
+    }
+
+    private static void parseChars(@Nullable JSONArray charsJson, LottieComposition composition) {
+      if (charsJson == null) {
+        return;
+      }
+
+      int length = charsJson.length();
+      for (int i = 0; i < length; i++) {
+        FontCharacter character =
+            FontCharacter.Factory.newInstance(charsJson.optJSONObject(i), composition);
+        composition.characters.put(character.hashCode(), character);
       }
     }
 

@@ -505,6 +505,21 @@ public class LottieAnimationView extends AppCompatImageView {
   }
 
   /**
+   * Use this to manually set fonts.
+   */
+  @SuppressWarnings({"unused", "WeakerAccess"}) public void setFontAssetDelegate(
+      @SuppressWarnings("NullableProblems") FontAssetDelegate assetDelegate) {
+    lottieDrawable.setFontAssetDelegate(assetDelegate);
+  }
+
+  /**
+   * Set this to replace animation text with custom text at runtime
+   */
+  public void setTextDelegate(TextDelegate textDelegate) {
+    lottieDrawable.setTextDelegate(textDelegate);
+  }
+
+  /**
    * Set the scale on the current composition. The only cost of this function is re-rendering the
    * current frame so you may call it frequent to scale something up or down.
    *
@@ -547,6 +562,15 @@ public class LottieAnimationView extends AppCompatImageView {
 
   @SuppressWarnings("unused") public long getDuration() {
     return composition != null ? composition.getDuration() : 0;
+  }
+
+  public void setPerformanceTrackingEnabled(boolean enabled) {
+    lottieDrawable.setPerformanceTrackingEnabled(enabled);
+  }
+
+  @Nullable
+  public PerformanceTracker getPerformanceTracker() {
+    return lottieDrawable.getPerformanceTracker();
   }
 
   private void enableOrDisableHardwareLayer() {

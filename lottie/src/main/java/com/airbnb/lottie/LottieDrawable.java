@@ -8,6 +8,7 @@ import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Matrix;
 import android.graphics.PixelFormat;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.support.annotation.FloatRange;
@@ -40,15 +41,19 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
   private float scale = 1f;
 
   private final Set<ColorFilterData> colorFilterData = new HashSet<>();
-  @Nullable private ImageAssetBitmapManager imageAssetBitmapManager;
+  @Nullable private ImageAssetManager imageAssetManager;
   @Nullable private String imageAssetsFolder;
   @Nullable private ImageAssetDelegate imageAssetDelegate;
+  @Nullable private FontAssetManager fontAssetManager;
+  @Nullable FontAssetDelegate fontAssetDelegate;
+  @Nullable TextDelegate textDelegate;
   private boolean playAnimationWhenCompositionAdded;
   private boolean reverseAnimationWhenCompositionAdded;
   private boolean systemAnimationsAreDisabled;
   private boolean enableMergePaths;
   @Nullable private CompositionLayer compositionLayer;
   private int alpha = 255;
+  private boolean performanceTrackingEnabled;
 
   @SuppressWarnings("WeakerAccess") public LottieDrawable() {
     animator.setRepeatCount(0);
@@ -130,8 +135,8 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
    *
    */
   @SuppressWarnings("WeakerAccess") public void recycleBitmaps() {
-    if (imageAssetBitmapManager != null) {
-      imageAssetBitmapManager.recycleBitmaps();
+    if (imageAssetManager != null) {
+      imageAssetManager.recycleBitmaps();
     }
   }
 
@@ -159,8 +164,24 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
       reverseAnimationWhenCompositionAdded = false;
       reverseAnimation();
     }
+    composition.setPerformanceTrackingEnabled(performanceTrackingEnabled);
 
     return true;
+  }
+
+  public void setPerformanceTrackingEnabled(boolean enabled) {
+    performanceTrackingEnabled = enabled;
+    if (composition != null) {
+      composition.setPerformanceTrackingEnabled(enabled);
+    }
+  }
+
+  @Nullable
+  public PerformanceTracker getPerformanceTracker() {
+    if (composition != null) {
+      return composition.getPerformanceTracker();
+    }
+    return null;
   }
 
   private void buildCompositionLayer() {
@@ -181,7 +202,7 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
   private void clearComposition() {
     recycleBitmaps();
     compositionLayer = null;
-    imageAssetBitmapManager = null;
+    imageAssetManager = null;
     invalidateSelf();
   }
 
@@ -270,6 +291,7 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
   }
 
   @Override public void draw(@NonNull Canvas canvas) {
+    L.beginSection("Drawable#draw");
     if (compositionLayer == null) {
       return;
     }
@@ -281,6 +303,7 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
     matrix.reset();
     matrix.preScale(scale, scale);
     compositionLayer.draw(canvas, matrix, alpha);
+    L.endSection("Drawable#draw");
   }
 
   void systemAnimationsAreDisabled() {
@@ -386,9 +409,32 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
   @SuppressWarnings({"unused", "WeakerAccess"}) public void setImageAssetDelegate(
       @SuppressWarnings("NullableProblems") ImageAssetDelegate assetDelegate) {
     this.imageAssetDelegate = assetDelegate;
-    if (imageAssetBitmapManager != null) {
-      imageAssetBitmapManager.setAssetDelegate(assetDelegate);
+    if (imageAssetManager != null) {
+      imageAssetManager.setDelegate(assetDelegate);
     }
+  }
+
+  /**
+   * Use this to manually set fonts.
+   */
+  @SuppressWarnings({"unused", "WeakerAccess"}) public void setFontAssetDelegate(
+      @SuppressWarnings("NullableProblems") FontAssetDelegate assetDelegate) {
+    this.fontAssetDelegate = assetDelegate;
+    if (fontAssetManager != null) {
+      fontAssetManager.setDelegate(assetDelegate);
+    }
+  }
+
+  public void setTextDelegate(@SuppressWarnings("NullableProblems") TextDelegate textDelegate) {
+    this.textDelegate = textDelegate;
+  }
+
+  @Nullable TextDelegate getTextDelegate() {
+    return textDelegate;
+  }
+
+  boolean useTextGlyphs() {
+    return textDelegate == null && composition.getCharacters().size() > 0;
   }
 
   @SuppressWarnings("WeakerAccess") public float getScale() {
@@ -446,7 +492,7 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
   @Nullable
   @SuppressWarnings({"unused", "WeakerAccess"})
   public Bitmap updateBitmap(String id, @Nullable Bitmap bitmap) {
-    ImageAssetBitmapManager bm = getImageAssetBitmapManager();
+    ImageAssetManager bm = getImageAssetManager();
     if (bm == null) {
       Log.w(L.TAG, "Cannot update bitmap. Most likely the drawable is not added to a View " +
         "which prevents Lottie from getting a Context.");
@@ -459,30 +505,52 @@ public class LottieDrawable extends Drawable implements Drawable.Callback {
 
   @Nullable
   Bitmap getImageAsset(String id) {
-    ImageAssetBitmapManager bm = getImageAssetBitmapManager();
+    ImageAssetManager bm = getImageAssetManager();
     if (bm != null) {
       return bm.bitmapForId(id);
     }
     return null;
   }
 
-  private ImageAssetBitmapManager getImageAssetBitmapManager() {
+  private ImageAssetManager getImageAssetManager() {
     if (getCallback() == null) {
       // We can't get a bitmap since we can't get a Context from the callback.
       return null;
     }
 
-    if (imageAssetBitmapManager != null && !imageAssetBitmapManager.hasSameContext(getContext())) {
-      imageAssetBitmapManager.recycleBitmaps();
-      imageAssetBitmapManager = null;
+    if (imageAssetManager != null && !imageAssetManager.hasSameContext(getContext())) {
+      imageAssetManager.recycleBitmaps();
+      imageAssetManager = null;
     }
 
-    if (imageAssetBitmapManager == null) {
-      imageAssetBitmapManager = new ImageAssetBitmapManager(getCallback(),
+    if (imageAssetManager == null) {
+      imageAssetManager = new ImageAssetManager(getCallback(),
           imageAssetsFolder, imageAssetDelegate, composition.getImages());
     }
 
-    return imageAssetBitmapManager;
+    return imageAssetManager;
+  }
+
+  @Nullable
+  Typeface getTypeface(String fontFamily, String style) {
+    FontAssetManager assetManager = getFontAssetManager();
+    if (assetManager != null) {
+      return assetManager.getTypeface(fontFamily, style);
+    }
+    return null;
+  }
+
+  private FontAssetManager getFontAssetManager() {
+    if (getCallback() == null) {
+      // We can't get a bitmap since we can't get a Context from the callback.
+      return null;
+    }
+
+    if (fontAssetManager == null) {
+      fontAssetManager = new FontAssetManager(getCallback(), fontAssetDelegate);
+    }
+
+    return fontAssetManager;
   }
 
   private @Nullable Context getContext() {

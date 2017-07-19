@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 class CompositionLayer extends BaseLayer {
+  @Nullable private final KeyframeAnimation<Float> timeRemapping;
   private final List<BaseLayer> layers = new ArrayList<>();
   private final RectF rect = new RectF();
   private final Rect originalClipRect = new Rect();
@@ -25,6 +26,15 @@ class CompositionLayer extends BaseLayer {
   CompositionLayer(LottieDrawable lottieDrawable, Layer layerModel, List<Layer> layerModels,
       LottieComposition composition) {
     super(lottieDrawable, layerModel);
+
+    AnimatableFloatValue timeRemapping = layerModel.getTimeRemapping();
+    if (timeRemapping != null) {
+      this.timeRemapping = timeRemapping.createAnimation();
+      addAnimation(this.timeRemapping);
+      this.timeRemapping.addUpdateListener(this);
+    } else {
+      this.timeRemapping = null;
+    }
 
     LongSparseArray<BaseLayer> layerMap =
         new LongSparseArray<>(composition.getLayers().size());
@@ -62,6 +72,7 @@ class CompositionLayer extends BaseLayer {
   }
 
   @Override void drawLayer(Canvas canvas, Matrix parentMatrix, int parentAlpha) {
+    L.beginSection("CompositionLayer#draw");
     canvas.getClipBounds(originalClipRect);
     newClipRect.set(0, 0, layerModel.getPreCompWidth(), layerModel.getPreCompHeight());
     parentMatrix.mapRect(newClipRect);
@@ -72,12 +83,14 @@ class CompositionLayer extends BaseLayer {
         nonEmptyClip = canvas.clipRect(newClipRect);
       }
       if (nonEmptyClip) {
-        layers.get(i).draw(canvas, parentMatrix, parentAlpha);
+        BaseLayer layer = layers.get(i);
+        layer.draw(canvas, parentMatrix, parentAlpha);
       }
     }
     if (!originalClipRect.isEmpty()) {
       canvas.clipRect(originalClipRect, Region.Op.REPLACE);
     }
+    L.endSection("CompositionLayer#draw");
   }
 
   @Override public void getBounds(RectF outBounds, Matrix parentMatrix) {
@@ -101,6 +114,15 @@ class CompositionLayer extends BaseLayer {
 
   @Override public void setProgress(@FloatRange(from = 0f, to = 1f) float progress) {
     super.setProgress(progress);
+    if (timeRemapping != null) {
+      long duration = lottieDrawable.getComposition().getDuration();
+      long remappedTime = (long) (timeRemapping.getValue() * 1000);
+      progress = remappedTime / (float) duration;
+    }
+    if (layerModel.getTimeStretch() != 0) {
+      progress /= layerModel.getTimeStretch();
+    }
+
     progress -= layerModel.getStartProgress();
     for (int i = layers.size() - 1; i >= 0; i--) {
       layers.get(i).setProgress(progress);
